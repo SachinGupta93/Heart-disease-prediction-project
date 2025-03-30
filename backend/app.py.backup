@@ -1,3 +1,7 @@
+"""
+Flask API for the Heart Disease Prediction project.
+"""
+
 import os
 import logging
 import joblib
@@ -6,175 +10,50 @@ import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_restx import Api, Resource, fields
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.neural_network import MLPClassifier
+from tensorflow.keras.models import load_model
+from config import Config
+
+# Load configuration
+config = Config()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configuration class
-class Config:
-    """Configuration settings for the Heart Disease Prediction application."""
-    
-    def __init__(self):
-        # Base directories
-        self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        self.MODEL_DIR = os.path.join(self.BASE_DIR, "model")
-        self.DATASET_PATH = os.path.join(os.path.dirname(self.BASE_DIR), "dataset", "heart.csv")
-        
-        # Ensure model directory exists
-        os.makedirs(self.MODEL_DIR, exist_ok=True)
-        
-        # Model paths
-        self.RF_MODEL_PATH = os.path.join(self.MODEL_DIR, "heart_model.pkl")
-        self.RF_SCALER_PATH = os.path.join(self.MODEL_DIR, "scaler.pkl")
-        self.NN_MODEL_PATH = os.path.join(self.MODEL_DIR, "neural_network_model.pkl")
-        self.NN_SCALER_PATH = os.path.join(self.MODEL_DIR, "scaler_nn.pkl")
-        
-        # API settings
-        self.API_HOST = "0.0.0.0"
-        self.API_PORT = 5000
-        self.DEBUG_MODE = True
-
-# Load configuration
-config = Config()
-
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 api = Api(app, version='1.0', title='Heart Disease Prediction API',
-          description='An API for predicting heart disease risk using machine learning')
+          description='An API for predicting heart disease risk using machine learning models')
 
 # Create namespaces
 prediction_ns = api.namespace('predictions', description='Prediction operations')
 model_ns = api.namespace('models', description='Model information')
 health_ns = api.namespace('health', description='Health check')
 
-# Function to train models if they don't exist
-def train_models_if_needed():
-    """Train and save models if they don't exist."""
-    # Check if models exist
-    rf_model_exists = os.path.exists(config.RF_MODEL_PATH)
-    nn_model_exists = os.path.exists(config.NN_MODEL_PATH)
-    
-    if rf_model_exists and nn_model_exists:
-        logger.info("Models already exist, skipping training.")
-        return
-    
-    logger.info("Training models...")
-    
-    # Load dataset
-    try:
-        df = pd.read_csv(config.DATASET_PATH)
-        logger.info(f"Dataset loaded successfully from {config.DATASET_PATH}")
-    except Exception as e:
-        logger.error(f"Error loading dataset: {str(e)}")
-        raise
-    
-    # Preprocess data
-    X = df.drop(columns=["target"])
-    y = df["target"]
-    
-    # Scale features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
-    
-    # Train Random Forest model if needed
-    if not rf_model_exists:
-        logger.info("Training Random Forest model...")
-        rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-        rf_model.fit(X_train, y_train)
-        
-        # Save Random Forest model and scaler
-        joblib.dump(rf_model, config.RF_MODEL_PATH)
-        joblib.dump(scaler, config.RF_SCALER_PATH)
-        logger.info(f"Random Forest model saved to {config.RF_MODEL_PATH}")
-    
-    # Train Neural Network model if needed
-    if not nn_model_exists:
-        try:
-            logger.info("Training Neural Network model...")
-            nn_model = MLPClassifier(
-                hidden_layer_sizes=(64, 32),
-                activation='relu',
-                solver='adam',
-                alpha=0.0001,
-                batch_size=16,
-                learning_rate='adaptive',
-                max_iter=500,
-                early_stopping=True,
-                validation_fraction=0.2,
-                random_state=42
-            )
-            
-            nn_model.fit(X_train, y_train)
-            
-            # Save Neural Network model
-            joblib.dump(nn_model, config.NN_MODEL_PATH)
-            joblib.dump(scaler, config.NN_SCALER_PATH)
-            logger.info(f"Neural Network model saved to {config.NN_MODEL_PATH}")
-        except Exception as e:
-            logger.error(f"Error training Neural Network model: {str(e)}")
-            logger.warning("Neural Network model will not be available.")
-
-# Train models if needed
-try:
-    train_models_if_needed()
-except Exception as e:
-    logger.error(f"Error during model training: {str(e)}")
-
 # Load models and scalers
-rf_model = None
-nn_model = None
-scaler = None
-feature_importance = None
-
 try:
     logger.info(f"Loading Random Forest model from {config.RF_MODEL_PATH}")
-    if os.path.exists(config.RF_MODEL_PATH):
-        rf_model = joblib.load(config.RF_MODEL_PATH)
-    else:
-        logger.warning(f"Random Forest model not found at {config.RF_MODEL_PATH}")
+    rf_model = joblib.load(config.RF_MODEL_PATH)
     
     logger.info(f"Loading scaler from {config.RF_SCALER_PATH}")
-    if os.path.exists(config.RF_SCALER_PATH):
-        scaler = joblib.load(config.RF_SCALER_PATH)
-    else:
-        logger.warning(f"Scaler not found at {config.RF_SCALER_PATH}")
+    scaler = joblib.load(config.RF_SCALER_PATH)
     
     logger.info(f"Loading Neural Network model from {config.NN_MODEL_PATH}")
-    if os.path.exists(config.NN_MODEL_PATH):
-        nn_model = joblib.load(config.NN_MODEL_PATH)
+    nn_model = load_model(config.NN_MODEL_PATH)
+    
+    # Load feature importance
+    feature_importance_path = os.path.join(config.MODEL_DIR, "feature_importance.csv")
+    if os.path.exists(feature_importance_path):
+        feature_importance = pd.read_csv(feature_importance_path)
     else:
-        logger.warning(f"Neural Network model not found at {config.NN_MODEL_PATH}")
+        feature_importance = None
+        logger.warning(f"Feature importance file not found at {feature_importance_path}")
     
-    # Extract feature importance if Random Forest model is loaded
-    if rf_model is not None:
-        # Get feature names
-        feature_names = [
-            'age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg',
-            'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'
-        ]
-        
-        # Get feature importance from Random Forest model
-        importances = rf_model.feature_importances_
-        
-        # Create a list of dictionaries with feature names and importance values
-        feature_importance = []
-        for feature, importance in zip(feature_names, importances):
-            feature_importance.append({
-                'feature': feature,
-                'importance': float(importance)
-            })
-    
+    logger.info("All models loaded successfully")
 except Exception as e:
     logger.exception(f"Error loading models: {str(e)}")
+    raise
 
 # Define input models for API documentation
 prediction_input = api.model('PredictionInput', {
@@ -210,43 +89,43 @@ def validate_input(data):
         return False, errors
     
     # Validate ranges
-    if not 0 <= float(data['age']) <= 120:
+    if not 0 <= data['age'] <= 120:
         errors.append("Age must be between 0 and 120")
     
-    if int(data['sex']) not in [0, 1]:
+    if data['sex'] not in [0, 1]:
         errors.append("Sex must be 0 (female) or 1 (male)")
     
-    if int(data['cp']) not in [0, 1, 2, 3]:
+    if data['cp'] not in [0, 1, 2, 3]:
         errors.append("Chest pain type must be between 0 and 3")
     
-    if float(data['trestbps']) <= 0:
+    if data['trestbps'] <= 0:
         errors.append("Resting blood pressure must be positive")
     
-    if float(data['chol']) <= 0:
+    if data['chol'] <= 0:
         errors.append("Cholesterol must be positive")
     
-    if int(data['fbs']) not in [0, 1]:
+    if data['fbs'] not in [0, 1]:
         errors.append("Fasting blood sugar must be 0 or 1")
     
-    if int(data['restecg']) not in [0, 1, 2]:
+    if data['restecg'] not in [0, 1, 2]:
         errors.append("Resting ECG results must be between 0 and 2")
     
-    if float(data['thalach']) <= 0:
+    if data['thalach'] <= 0:
         errors.append("Maximum heart rate must be positive")
     
-    if int(data['exang']) not in [0, 1]:
+    if data['exang'] not in [0, 1]:
         errors.append("Exercise induced angina must be 0 or 1")
     
-    if float(data['oldpeak']) < 0:
+    if data['oldpeak'] < 0:
         errors.append("ST depression must be non-negative")
     
-    if int(data['slope']) not in [0, 1, 2]:
+    if data['slope'] not in [0, 1, 2]:
         errors.append("Slope must be between 0 and 2")
     
-    if not 0 <= int(data['ca']) <= 3:
+    if not 0 <= data['ca'] <= 3:
         errors.append("Number of major vessels must be between 0 and 3")
     
-    if not 1 <= int(data['thal']) <= 3:
+    if not 1 <= data['thal'] <= 3:
         errors.append("Thalassemia type must be between 1 and 3")
     
     return len(errors) == 0, errors
@@ -269,10 +148,6 @@ class PredictionResource(Resource):
     def post(self):
         """Make a heart disease prediction using the Random Forest model."""
         try:
-            # Check if model is loaded
-            if rf_model is None or scaler is None:
-                return {'error': 'Model not loaded. Please train the model first.'}, 503
-            
             # Get data from request
             data = request.get_json(force=True)
             logger.info(f"Received prediction request: {data}")
@@ -313,13 +188,6 @@ class ComparisonResource(Resource):
     def post(self):
         """Compare predictions from Random Forest and Neural Network models."""
         try:
-            # Check if models are loaded
-            if rf_model is None or scaler is None:
-                return {'error': 'Random Forest model not loaded. Please train the model first.'}, 503
-            
-            if nn_model is None:
-                return {'error': 'Neural Network model not loaded. Please train the model first.'}, 503
-            
             # Get data from request
             data = request.get_json(force=True)
             logger.info(f"Received model comparison request: {data}")
@@ -340,9 +208,9 @@ class ComparisonResource(Resource):
             rf_prediction = rf_model.predict(scaled_features)[0]
             rf_probability = rf_model.predict_proba(scaled_features)[0][1]
             
-             # Make predictions with Neural Network
-            nn_probability = nn_model.predict_proba(scaled_features)[0][1]
-            nn_prediction = nn_model.predict(scaled_features)[0]
+            # Make predictions with Neural Network
+            nn_probability = nn_model.predict(scaled_features)[0][0]
+            nn_prediction = 1 if nn_probability > 0.5 else 0
             
             # Check if models agree
             agreement = rf_prediction == nn_prediction
@@ -377,18 +245,23 @@ class FeatureImportanceResource(Resource):
             if feature_importance is None:
                 return {'error': 'Feature importance data not available'}, 404
             
-            # Add descriptions for each feature
-            result = []
-            for item in feature_importance:
-                feature_name = item['feature']
-                result.append({
+            # Prepare response with feature importance data
+            response = []
+            for _, row in feature_importance.iterrows():
+                feature_name = row['feature']
+                importance = row['importance']
+                
+                # Add descriptions for each feature
+                description = get_feature_description(feature_name)
+                
+                response.append({
                     'feature': feature_name,
-                    'importance': item['importance'],
-                    'description': get_feature_description(feature_name)
+                    'importance': float(importance),
+                    'description': description
                 })
             
-            logger.info(f"Returning feature importance for {len(result)} features")
-            return result, 200
+            logger.info(f"Returning feature importance for {len(response)} features")
+            return response, 200
             
         except Exception as e:
             logger.exception(f"Error getting feature importance: {str(e)}")
@@ -412,6 +285,17 @@ def get_feature_description(feature_name):
         'thal': 'Thalassemia type - a blood disorder that can affect heart function'
     }
     
+       # For engineered features
+    if 'age_group' in feature_name:
+        return 'Age group category - different age groups have different risk levels'
+    elif 'thalach_age_ratio' in feature_name:
+        return 'Ratio of maximum heart rate to age - indicates cardiovascular fitness'
+    elif 'bp_category' in feature_name:
+        return 'Blood pressure category - higher categories indicate higher risk'
+    elif 'chol_category' in feature_name:
+        return 'Cholesterol level category - higher categories indicate higher risk'
+    
+    # Default description if feature not found
     return descriptions.get(feature_name, 'No description available')
 
 @health_ns.route('/')
@@ -424,3 +308,4 @@ if __name__ == '__main__':
     port = int(os.getenv("PORT", config.API_PORT))
     debug_mode = os.getenv("DEBUG", str(config.DEBUG_MODE)).lower() == "true"
     app.run(host=config.API_HOST, port=port, debug=debug_mode)
+

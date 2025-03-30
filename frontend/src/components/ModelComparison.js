@@ -1,8 +1,40 @@
 import React, { useState } from "react";
 import axios from "axios";
-import "../styles/main.css";
 
 const ModelComparison = () => {
+    // Field labels and descriptions for better UI
+    const fieldLabels = {
+        age: "Age",
+        sex: "Sex",
+        cp: "Chest Pain Type",
+        trestbps: "Resting Blood Pressure",
+        chol: "Cholesterol",
+        fbs: "Fasting Blood Sugar",
+        restecg: "Resting ECG Results",
+        thalach: "Maximum Heart Rate",
+        exang: "Exercise Induced Angina",
+        oldpeak: "ST Depression",
+        slope: "ST Segment Slope",
+        ca: "Number of Major Vessels",
+        thal: "Thalassemia"
+    };
+
+    const fieldDescriptions = {
+        age: "Age in years",
+        sex: "Gender (0 = female, 1 = male)",
+        cp: "Type of chest pain (0-3)",
+        trestbps: "Resting blood pressure in mm Hg",
+        chol: "Serum cholesterol in mg/dl",
+        fbs: "Fasting blood sugar > 120 mg/dl (1 = true, 0 = false)",
+        restecg: "Resting electrocardiographic results (0-2)",
+        thalach: "Maximum heart rate achieved",
+        exang: "Exercise induced angina (1 = yes, 0 = no)",
+        oldpeak: "ST depression induced by exercise relative to rest",
+        slope: "Slope of the peak exercise ST segment (0-2)",
+        ca: "Number of major vessels colored by fluoroscopy (0-3)",
+        thal: "Thalassemia type (1-3)"
+    };
+
     const [formData, setFormData] = useState({
         age: "",
         sex: "",
@@ -23,82 +55,48 @@ const ModelComparison = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Field descriptions for better user understanding
-    const fieldDescriptions = {
-        age: "Your age in years",
-        sex: "Your biological sex",
-        cp: "Type of chest pain you experience",
-        trestbps: "Your resting blood pressure (mm Hg)",
-        chol: "Your serum cholesterol level (mg/dl)",
-        fbs: "Whether your fasting blood sugar is above 120 mg/dl",
-        restecg: "Results from your resting electrocardiogram",
-        thalach: "Your maximum heart rate achieved during exercise",
-        exang: "Whether you experience chest pain during exercise",
-        oldpeak: "ST depression induced by exercise relative to rest",
-        slope: "The slope of the peak exercise ST segment",
-        ca: "Number of major vessels colored by fluoroscopy (0-3)",
-        thal: "Results from your thallium stress test"
-    };
-
-    // Human-readable field labels
-    const fieldLabels = {
-        age: "Age",
-        sex: "Gender",
-        cp: "Chest Pain Type",
-        trestbps: "Resting Blood Pressure",
-        chol: "Cholesterol Level",
-        fbs: "High Fasting Blood Sugar",
-        restecg: "Resting ECG Results",
-        thalach: "Max Heart Rate",
-        exang: "Exercise Angina",
-        oldpeak: "ST Depression",
-        slope: "ST Segment Slope",
-        ca: "Major Vessels Count",
-        thal: "Thalassemia"
-    };
-
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-   // Update the handleSubmit function in ModelComparison.js
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
 
-const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    
-    try {
-        // Use the new /compare endpoint
-        const response = await axios.post("http://127.0.0.1:5000/predict", {
-            age: parseFloat(formData.age),
-            sex: parseFloat(formData.sex),
-            cp: parseFloat(formData.cp),
-            trestbps: parseFloat(formData.trestbps),
-            chol: parseFloat(formData.chol),
-            fbs: parseFloat(formData.fbs),
-            restecg: parseFloat(formData.restecg),
-            thalach: parseFloat(formData.thalach),
-            exang: parseFloat(formData.exang),
-            oldpeak: parseFloat(formData.oldpeak),
-            slope: parseFloat(formData.slope),
-            ca: parseFloat(formData.ca),
-            thal: parseFloat(formData.thal)
-        });
-        
-        // Set the comparison result directly from the response
-        setComparisonResult(response.data);
-    } catch (error) {
-        console.error("Error comparing models:", error);
-        setError("An error occurred while comparing models. Please try again.");
-    } finally {
-        setLoading(false);
-    }
-};
+        try {
+            // Use the new compare endpoint
+            const response = await axios.post("http://127.0.0.1:5000/predictions/compare", {
+                age: parseFloat(formData.age),
+                sex: parseInt(formData.sex),
+                cp: parseInt(formData.cp),
+                trestbps: parseFloat(formData.trestbps),
+                chol: parseFloat(formData.chol),
+                fbs: parseInt(formData.fbs),
+                restecg: parseInt(formData.restecg),
+                thalach: parseFloat(formData.thalach),
+                exang: parseInt(formData.exang),
+                oldpeak: parseFloat(formData.oldpeak),
+                slope: parseInt(formData.slope),
+                ca: parseInt(formData.ca),
+                thal: parseInt(formData.thal)
+            });
 
-    // Helper function to render appropriate input for each field
+            setComparisonResult(response.data);
+        } catch (error) {
+            console.error("Error comparing models:", error);
+            if (error.response && error.response.data && error.response.data.details) {
+                // Show detailed validation errors if available
+                setError(`Error: ${error.response.data.details.join(", ")}`);
+            } else {
+                setError("An error occurred while comparing models. Please try again.");
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const renderInput = (name) => {
-        // Special cases for fields with specific options
         if (name === "sex") {
             return (
                 <select
