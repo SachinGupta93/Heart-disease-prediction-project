@@ -1,4 +1,3 @@
-@"
 # Python
 __pycache__/
 *.py[cod]
@@ -42,4 +41,3 @@ npm-debug.log*
 pids
 *.pid
 *.seed
-"@ | Out-File -FilePath .gitignore -Encoding utf8
